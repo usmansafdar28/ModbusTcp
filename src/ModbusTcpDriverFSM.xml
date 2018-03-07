@@ -1,0 +1,1044 @@
+<scxml initial='Idle' name='*' version='1.0' xmlns='http://www.w3.org/2005/07/scxml'><!--   node-size-and-position x=0 y=0 w=1734.61 h=1202  -->
+ <datamodel>
+  <data expr="'0001'" id='transaction_id'></data>
+  <data expr="'0000'" id='protocol_id'></data>
+  <data expr="'00'" id='device_id'></data>
+  <data expr="''" id='register_address'></data>
+  <data expr="''" id='fc'></data>
+  <data expr="''" id='numberofregisters'></data>
+  <data expr="''" id='write_value'></data>
+  <data expr="" id='client'></data>
+  <data expr="" id='send_request'></data>
+  <data expr="false" id='completed'></data>
+  <data expr="false" id='completed2'></data>
+  <data expr="'test'" id='device_response'></data>
+  <data expr="''" id='long'></data>
+  <data expr="" id='short'></data>
+  <data expr="" id='boolean'></data>
+  <data expr="16" id='format'></data>
+  <data expr="" id='response_fc'></data>
+  <data expr="" id='response_len'></data>
+  <data expr="" id='response_data'></data>
+  <data expr="" id='response_device_id'></data>
+  <data expr="xcv" id='validation'></data>
+  <data expr="0" id='counter'></data>
+  <data expr="" id='connection_address'></data>
+  <data expr="localhost1" id='_host'></data>
+  <data expr="503" id='_port'></data>
+  <data expr="" id='transaction_response'></data>
+  <data expr="" id='_data_type'></data>
+  <data expr="" id='send_request_track'></data>
+ </datamodel>
+ <script>
+ 
+function hex2bin(hex) // not being used
+{
+	return new Buffer(hex, 'hex');
+}
+function request_validator(msg) // Validate message before send (incomplete: not being used right now)
+{
+	console.log('msg length ' + msg.length);
+	if (msg.length != 0) {
+		validation = true;
+		console.log('Validation Successfull : ');
+	} else {
+
+		validation = false;
+		console.log('Validation Failed : ');
+	}
+	if (fc == 10) {
+		validation = true;
+	}
+}
+
+function disconnection() // disconnect from modbus device
+{
+	try {
+		connection_address = client.remoteAddress;
+		client.destroy();
+		console.log('connection Disconnected : ');
+	} catch (err) {
+		console.log('Operation Failed : ' + err);
+	}
+}
+
+function connection() // connect to modbus device
+{
+	var net = require('net');
+
+	client = new net.Socket();
+	client.setNoDelay(true);
+	client.noDelay = true;
+	try {
+		console.log('host: ' + _host);
+
+		client.connect(_port, _host, function () {
+			client.setNoDelay(true);
+			console.log('Connected');
+			console.log(client.address());
+			console.log(client.remoteAddress);
+		});
+
+		client.once('connect', function () //.once used instead of .on to avoid creating multiple listeners on loop back
+		{
+			global.scxml1.gen({
+				name : 'connected'
+			}); // generate event if Modbus Device connects
+			global.connection_state = true;
+		});
+
+		client.on('error', function () {
+			global.scxml1.gen({
+				name : 'connect_error'
+			}); // generate event if unable to connect to Modbus Device
+		});
+	} catch (err) {
+		console.log('Connection Failed: ' + err);
+	}
+}
+
+function response_received(data) // generate event once data packet is received from Modbus device
+{
+	
+	device_response = data.toString('hex');
+	console.log('Remote Address' + client.remoteAddress);
+	console.log('Call back Received: ' + device_response);
+
+	completed2 = true; //????????????? check if still used
+	global.scxml1.gen({
+		name : 'completed2'
+	});
+}
+
+function hex2a(hexx) // convert the send_request to hex string
+{
+	console.log('hexx : ' + hexx);
+	var str = new Buffer(hexx, 'hex');
+	return str;
+}
+ </script>
+ <state id='Connecting'><!--   node-size-and-position x=1419.74 y=80 w=75 h=75  -->
+  <onentry>
+   <script>						
+			console.log('Connecting State.....');             
+		</script>
+  </onentry>
+<!-- // on connect wait in this state for response from modbus device -->
+  <transition event='connected' target='connected'>
+   <script>
+			// if socket connection received close call then it generates the disconnected event which 
+			// change the state to disconnected 
+			
+			console.log('Going to connected State');
+			client.on('close', function() 
+			{
+			//console.log('Connection closed');
+			global.scxml1.gen({name:'disconnected'});
+			});
+		
+
+		</script>
+  </transition>
+  <transition event='connect_error' target='connection_error'><!--   edge-path [connection_error]  x=1492.2 y=445.71 pointx=0 pointy=0 offsetx=114 offsety=0  --></transition>
+  <transition event='Timeout' target='connection_error'><!--   edge-path [connection_error]  x=1509.28 y=435.29 pointx=0 pointy=0 offsetx=77 offsety=0  --></transition>
+ </state>
+ <state id='Idle'><!--   node-size-and-position x=1604.74 y=43 w=75 h=75  -->
+  <onentry>
+   <script>
+		console.log('----FSM Started Idle State!---- ');
+
+   </script>
+  </onentry>
+<!-- Starting state -->
+  <transition event='Input' target='Connecting'><!--    'Connect' received from MQTT client   -->
+   <script>
+  
+				// Getting data from interpretor
+  
+				console.log('Input event Received: ');				
+				_port	= _event.data.port;
+				_host	= _event.data.host;
+				device_id	= _event.data.device_id;
+				console.log(_port + _host + register_address + fc);
+				connection();			// this function create connection with device
+		 </script>
+  </transition>
+ </state>
+ <state id='connection_error'><!--   node-size-and-position x=1630.24 y=630.5 w=100 h=75  -->
+  <transition target='Idle'><!--    loop back to idle on connection error  --><!--   edge-path [Idle]  x=1642.24 y=205.5  --></transition>
+ </state>
+ <parallel id='connected'><!--   this is a parallel state which have multiple FSMs in it i.e request, response, receive listner  -->
+  <onentry>
+   <script>
+		
+	//	device_response = "''";
+		
+	</script>
+  </onentry>
+<!-- connection established to modbus device : Contains Request and Response blocks -->
+  <transition event='disconnected' target='disconnected'><!--    Exit State towards IDLE   --></transition>
+  <transition event='error' target='error'><!--    Exit State towards IDLE   --></transition>
+  <state id='request' initial='request_select'><!--   node-size-and-position x=290.31 y=43 w=1232.17 h=701  -->
+   <state id='request_select'><!--   node-size-and-position x=1019.5 y=43 w=90 h=75  --><!-- Read or Write -->
+    <transition event='write' target='write'><!--   when it receive write event it get the values from interpretor and execute them to buil write request -->
+     <script>
+
+//	Get data of single write Request
+
+register_address = _event.data.raddress; // Register register_address
+fc = _event.data.fc; // function code
+write_value = _event.data.write_data;
+//				numberofregisters		= _event.data.data_length; // not being used catered by data type
+_data_type = _event.data.data_type; // Data type like short, long, double, float
+	</script>
+    </transition>
+    <transition event='read' target='read'><!--   when it receive write event it get the values from interpretor and execute them to buil read request -->
+     <script>
+				//	Get data of single read Request
+
+				register_address = _event.data.raddress; // Register register_address
+				fc = _event.data.fc; // function code
+				//	write_value = _event.data.write_data;
+				_data_type = _event.data.data_type; // Data type like short, long, double, float
+	</script>
+    </transition>
+   </state>
+   <state id='validation'><!--   node-size-and-position x=758 y=481 w=75 h=75  -->
+    <onentry>
+     <script>
+			// currently not functional it just dummy state, later can be used
+			request_validator(send_request);
+			console.log('Send_Request prepared: ' + send_request);
+		</script>
+    </onentry>
+    <transition cond='validation==true' target='send'><!--   edge-path [send]  x=852.3 y=576.25  --></transition>
+    <transition target='send'><!--   edge-path [send]  x=834.7 y=585.75  --></transition>
+   </state>
+   <state id='send'><!--   node-size-and-position x=831 y=606 w=75 h=75  -->
+    <onentry>
+     <script>
+		client.write(hex2a(send_request));			// convert the request to hexadecimal and sent it to device
+		send_request_track=send_request_track + ' , ' + send_request;	// accomulating all sent requests
+		console.log('Request sent to the device:');
+				 
+			</script>
+<!-- raise event='completed'></raise --></onentry>
+    <transition target='request_select'></transition>
+   </state>
+   <state id='write' initial='Select_write'><!--   node-size-and-position x=20 y=168 w=873 h=263  -->
+    <transition target='validation'></transition>
+    <state id='Select_write'><!--   select next state according to the value of FC which is passed by the MQTT  -->
+     <onentry>
+      <script>
+	console.log('Select State of Write Request: ');
+	</script>
+     </onentry>
+     <transition cond='fc==05' target='Message={Tran}{Prot}{id}{FC}{AHAL}{RHRL}'></transition>
+     <transition cond='fc==06' target='Message={id}{10}{AHAL}{RHRL}{CT}{DHDL}{DHDL}'><!--   edge-path [Message={id}{10}{AHAL}{RHRL}{CT}{DHDL}{DHDL}]  x=453 y=142  --></transition>
+     <transition cond="fc=='0F'" target='Message={id}{0F}{AHAL}{RHRL}{CT}{DHDL}'></transition>
+     <transition cond='fc==10' target='Message={id}{10}{AHAL}{RHRL}{CT}{DHDL}{DHDL}'><!--   edge-path [Message={id}{10}{AHAL}{RHRL}{CT}{DHDL}{DHDL}]  x=433 y=142  --></transition>
+    </state>
+    <state id='Message={Tran}{Prot}{id}{FC}{AHAL}{RHRL}'><!--   node-size-and-position x=603 y=168 w=250 h=75  -->
+     <onentry>
+      <script>
+	  
+	    //////////////////remove FC 06////////////////
+		
+	    console.log('Message={id}{FC}{AHAL}{DHDL} State: ---------Write fc05---------');
+	    var request_info = {}; // object used for tracking request which is sent to device 
+	    // Write Message to Device
+	    if (fc == 05) // FC 06 Removed From here
+	    {
+	    	send_request = '';
+
+	    	register_address = (parseInt(register_address) - 1).toString(16);   // convert register register_address to hex and then padding 0's
+	    	while (register_address.length &lt; 4) {
+	    		register_address = '0' + register_address;
+	    	}
+			// pushing values 
+	    	request_info.fc = fc;
+	    	request_info.t = _data_type;
+	    	request_info.a = register_address;
+	    	request_info.v = write_value;
+			// if write valie is 0 then send 0000 in write request else send ff00 in the packet for 1
+	    	if (write_value == 0) {
+	    		write_value = '0000';
+	    	} else {
+	    		write_value = 'ff00';
+	    	}
+	    	console.log('Write Operations');
+	    	send_request = transaction_id + protocol_id + '0006' + device_id + fc + register_address + write_value;
+
+	    	console.log('request_info: ' + request_info.fc + request_info.t + request_info.a);
+
+	    	transaction_id = parseInt(transaction_id, 16);
+	    	console.log('transaction_id before add' + transaction_id);
+	    	// pushing request_info into global.request_tracking_r array which have all objects of requests agains the index of transaction_id
+			// where transaction_id is being incremented on each request
+			request_tracking_r[transaction_id] = request_info; 
+
+	    	console.log('request_tracking_r' + request_tracking_r[transaction_id].fc);
+
+	    	transaction_id = transaction_id + 1;
+
+	    	console.log('transaction_id after add' + transaction_id);
+	    	transaction_id = (parseInt(transaction_id)).toString(16);	// convert register register_address to hex and then padding 0's
+	    	while (transaction_id.length &lt; 4) {
+	    		transaction_id = '0' + transaction_id;
+	    	}
+
+	    }
+
+	</script>
+     </onentry>
+    </state>
+    <state id='Message={id}{10}{AHAL}{RHRL}{CT}{DHDL}{DHDL}'><!--   write Multiple Registers  -->
+     <onentry>
+      <script>
+ if (fc == 10 || fc == 06) //we are using FC==10 for both cases as it is more generic
+ {
+ 	var request_info = {};
+ 	var pdu;
+ 	console.log('Write Operations');
+ 	//we are expecting address as an integer from the user
+ 	//Converting to hexadecimal and padding string for modbus message
+
+ 	register_address = (parseInt(register_address) - 1).toString(16);
+ 	while (register_address.length &lt; 4) {
+ 		register_address = '0' + register_address;
+ 	}
+
+ 	request_info.fc = 10; //push values into an object
+ 	request_info.t = _data_type;
+ 	request_info.a = register_address;
+ 	request_info.v = write_value;
+
+ 	console.log('write_value before hex: ' + write_value);
+
+ 	console.log('write_value after hex: ' + write_value);
+
+ 	if (_data_type == 's') //select operations based on data type provided by user
+ 	{
+ 		if (parseInt(write_value) &lt; 0) //cater for -ve numbers NOTE:Limit is -2^15(-32768) apply check
+ 		{
+ 			var complement = new Buffer(2);
+ 			complement.writeInt16BE(write_value);
+ 			write_value = complement.toString('hex');
+ 		} else {
+ 			write_value = (parseInt(write_value)).toString(16);
+ 		}
+ 		while (write_value.length &lt; 4) // padding with 0's at start
+ 		{
+ 			write_value = '0' + write_value;
+ 		}
+ 		pdu = device_id + '10' + register_address + '0001' + '02' + write_value; // consider removing pdu here and below; we were using pdu.length earlier but now message length is fixed
+ 		send_request = transaction_id + protocol_id + '0008' + pdu; //complete message body
+ 	} else if (_data_type == 'l' || _data_type == 'lu') {
+ 		if (parseInt(write_value) &lt; 0) //cater for -ve numbers NOTE:Limit is -2^31
+ 		{
+ 			var complement = new Buffer(4);
+ 			complement.writeInt32BE(write_value);
+ 			write_value = complement.toString('hex');
+ 		} else {
+ 			write_value = (parseInt(write_value)).toString(16);
+ 		}
+ 		while (write_value.length &lt; 8) {
+ 			write_value = '0' + write_value;
+ 		}
+ 		pdu = device_id + '10' + register_address + '0002' + '04' + write_value;
+ 		send_request = transaction_id + protocol_id + '000A' + pdu;
+ 	} else if (_data_type == 'f' || _data_type == 'fu') {
+ 		var b = new Buffer(4); // convert to float
+ 		b.writeFloatBE(write_value, 0);
+ 		write_value = b.toString('hex');
+		while (write_value.length &lt; 8) // padding
+ 			{
+ 				write_value = '0' + write_value;
+ 			}
+ 			pdu = device_id + '10' + register_address + '0002' + '04' + write_value;
+ 		send_request = transaction_id + protocol_id + '000A' + pdu;
+ 	} else if (_data_type == 'd' || _data_type == 'du') {
+
+ 		var b = new Buffer(8); // convert to double
+ 		b.writeDoubleBE(write_value, 0);
+ 		write_value = b.toString('hex');
+ 		while (write_value.length &lt; 16) {
+ 			write_value = '0' + write_value;
+ 		}
+
+ 		pdu = device_id + '10' + register_address + '0004' + '08' + write_value;
+ 		send_request = transaction_id + protocol_id + '000F' + pdu;
+ 	} else {
+ 		write_value = (parseInt(write_value)).toString(16);
+ 		while (write_value.length &lt; 4) {
+ 			write_value = '0' + write_value;
+ 		}
+ 		pdu = device_id + '10' + register_address + '0001' + '02' + write_value;
+ 		send_request = transaction_id + protocol_id + '0008' + pdu;
+ 	}
+
+ 	console.log('write_value after padding: ' + write_value);
+ 	console.log('PDU: ' + pdu);
+ 	console.log('send_request: ' + send_request);
+
+ 	console.log('request_info: ' + request_info.fc + request_info.t + request_info.a);
+
+ 	transaction_id = parseInt(transaction_id, 16);
+ 	console.log('transaction_id before add' + transaction_id);
+ 	request_tracking_r[transaction_id] = request_info; // push object into tracking array
+
+ 	console.log('request_tracking_r' + request_tracking_r[transaction_id].fc);
+
+ 	transaction_id = transaction_id + 1;
+ 	//increment index
+
+ 	console.log('transaction_id after add' + transaction_id);
+ 	transaction_id = (parseInt(transaction_id)).toString(16);
+ 	while (transaction_id.length &lt; 4) {
+ 		transaction_id = '0' + transaction_id;
+ 	}
+ }
+ validation = true;
+ console.log('Send_Request prepared: ' + send_request);
+ </script>
+     </onentry>
+    </state>
+<!-- write Multiple Registers -->
+    <state id='Message={id}{0F}{AHAL}{RHRL}{CT}{DHDL}'><!--   node-size-and-position x=20 y=168 w=240 h=75  -->
+     <onentry>
+      <script>
+   
+   console.log('Write Operations 123');
+
+   var bits = write_value.length;
+   var dat_len = (bits + 7) / 8;
+   var dat = write_value;
+   dat_len = Math.floor(dat_len);
+   var words = dat_len;
+   dat_len = (dat_len * 8);
+   while (dat.length &lt; dat_len) {
+   	dat = dat + '0';
+   }
+
+   var t = '';
+   for (var i = 0; i &lt; words; i++) {
+   	var a = dat.slice((i * 8), (i * 8) + 4);
+   	a = a.split('').reverse().join('');
+   	var c = dat.slice((i * 8) + 4, (i * 8) + 8)
+   		c = c.split('').reverse().join('');
+   	t += c + a;
+   }
+
+   dat = t;
+
+   words = Math.floor(words);
+
+   bits = bits.toString(16);
+   words = words.toString(16);
+   while (bits.length &lt; 4) {
+   	bits = '0' + bits;
+   }
+   while (words.length &lt; 2) {
+   	words = '0' + words;
+   }
+
+   console.log('dat: ' + dat);
+   console.log('dat: ' + dat_len);
+   dat = parseInt(dat, 2).toString(16);
+   while (dat.length &lt; dat_len / 4) {
+   	dat = '0' + dat;
+   }
+
+   console.log('dat: ' + dat);
+
+   console.log('dat: ' + dat + 'fc: ' + fc + 'words: ' + words + 'bits: ' + bits + 'device_id: ' + device_id);
+
+   var pdu = device_id + fc + register_address + bits + words + dat;
+   console.log('PDU: ' + pdu);
+
+   var pdu_len = pdu.length;
+   console.log('PDU length: ' + pdu_len);
+   pdu_len = pdu.length / 2;
+   pdu_len = pdu_len.toString(16);
+   while (pdu_len.length &lt; 4) {
+   	pdu_len = '0' + pdu_len;
+   }
+   console.log('PDU length: ' + pdu_len);
+   send_request = transaction_id + protocol_id + pdu_len + pdu;
+   console.log('send_request: ' + send_request);
+
+   validation = true;
+   console.log('Send_Request prepared: ' + send_request);
+ </script>
+     </onentry>
+    </state>
+   </state>
+   <state id='read' initial='select_read'><!--   node-size-and-position x=923 y=168 w=283 h=263  -->
+    <transition target='validation'></transition>
+    <state id='select_read'><!--   node-size-and-position x=101.5 y=43 w=75 h=75  -->
+     <transition cond='fc==07' target='Message={id}{07}'></transition>
+     <transition cond='fc==04' target='read{fc(1,2,3,4)}'><!--   edge-path [read{fc(1,2,3,4)}]  x=183.74 y=137.31  --></transition>
+     <transition cond='fc==01' target='read{fc(1,2,3,4)}'><!--   edge-path [read{fc(1,2,3,4)}]  x=201.26 y=127.69  --></transition>
+     <transition cond='fc==03' target='read{fc(1,2,3,4)}'><!--   edge-path [read{fc(1,2,3,4)}]  x=218.79 y=118.06  --></transition>
+     <transition cond='fc==02' target='read{fc(1,2,3,4)}'><!--   edge-path [read{fc(1,2,3,4)}]  x=166.21 y=146.94  --></transition>
+    </state>
+    <state id='read{fc(1,2,3,4)}'><!--   node-size-and-position x=153 y=168 w=110 h=75  -->
+     <onentry>
+      <script>
+		console.log('Message={id}{FC}{AHAL}{DHDL} State: ------Read State-------');
+
+		//Read Data from Device
+
+		var request_info = {};
+
+		if (fc == 01 || fc == 02 || fc == 03 || fc == 04) {
+			send_request = '';
+
+			register_address = (parseInt(register_address) - 1).toString(16); // Converting register_address to Hexdecimal and then appending 0s
+			while (register_address.length &lt; 4) {
+				register_address = '0' + register_address;
+			}
+
+			if (_data_type == 's' || _data_type == 'ss') // short or signed short
+			{
+				numberofregisters = 1;
+			} else if (_data_type == 'l' || _data_type == 'f' || _data_type == 'lu' || _data_type == 'fu' || _data_type == 'sl' || _data_type == 'slu') // long (Big endian), float, long unswapped (Little endian), signed long, signed unswapped long
+			{
+				numberofregisters = 2;
+			} else if (_data_type == 'd' || _data_type == 'du') {
+				numberofregisters = 4;
+			} else {
+				numberofregisters = 1;
+			}
+			numberofregisters = (parseInt(numberofregisters)).toString(16); // Converting numberofregisters to Hexdecimal and then appending 0s
+			while (numberofregisters.length &lt; 4) {
+				numberofregisters = '0' + numberofregisters;
+			}
+
+			send_request = transaction_id + protocol_id + '0006' + device_id + fc + register_address + numberofregisters;
+
+			request_info.fc = fc; // push into an object
+			request_info.t = _data_type;
+			request_info.a = register_address;
+
+			console.log('request_info: ' + request_info.fc + request_info.t + request_info.a);
+
+			transaction_id = parseInt(transaction_id, 16); // Converting transaction id to INT
+			console.log('transaction_id before add' + transaction_id);
+			request_tracking_r[transaction_id] = request_info; // push object into a tracking array
+
+			console.log('request_tracking_r' + request_tracking_r[transaction_id].fc);
+
+			transaction_id = transaction_id + 1; //increment index
+
+			console.log('transaction_id after add' + transaction_id);
+			transaction_id = (parseInt(transaction_id)).toString(16); // Converting transaction id to Hexdecimal and then appending 0s
+			while (transaction_id.length &lt; 4) {
+				transaction_id = '0' + transaction_id;
+			}
+		}
+ </script>
+     </onentry>
+    </state>
+    <state id='Message={id}{07}'><!--   node-size-and-position x=20 y=168 w=100 h=75  --></state>
+   </state>
+  </state>
+  <state id='response' initial='response_initial'><!--   node-size-and-position x=20 y=43 w=210.79 h=701  -->
+   <state id='response_initial'><!--   node-size-and-position x=73 y=43 w=100 h=75  -->
+    <transition target='receive'></transition>
+   </state>
+   <state id='receive'><!--   node-size-and-position x=85.5 y=168 w=75 h=75  -->
+    <onentry>
+     <script>
+		
+			//client.setNoDelay(true);
+			//client.once('data',response_received);		// Waiting for Response from the Device
+		
+		</script>
+    </onentry>
+    <transition event='completed2' target='receive_validation'></transition>
+   </state>
+   <state id='receive_validation'><!--   node-size-and-position x=20 y=293 w=120 h=75  -->
+    <transition target='Parsing'></transition>
+   </state>
+   <state id='Parsing' initial='Select_type'><!--   node-size-and-position x=67.5 y=418 w=115 h=263  -->
+    <transition event='output' target='receive'><!--   edge-path [receive]  x=170 y=330.5  --></transition>
+    <state id='output'><!--   node-size-and-position x=20 y=168 w=75 h=75  -->
+     <onentry>
+      <script>
+ var interval2 = setInterval(function () {
+ 		
+ 		var coil_status = [];		// array for fc=01(coil status) which will accumulate the individual objects for each tag address
+ 		var input_staus = [];		// array for fc=02(input status) which will accumulate the individual objects for each tag address
+ 		var holding_registers = [];		// array for fc=03(holding registers) which will the have individual objects against each tag address
+ 		var input_registers = [];		// array for fc=04(input registers) which will the have individual objects against each tag address
+ 		var cd = 0;			// outer while loop counter
+ 		var cdd = 0;		// inner while loop counter
+
+ 		//if(completed2)
+ 		//	{
+ 
+ 		while (global.response_array[0] != null) {
+ 			cd = cd + 1; // incrementing outer loop counter
+ 			console.log('Entered outer loop: ' + cd);
+ 			cdd = 0;
+			// This object contains response data for each register 
+			// and after execution pop out that data to an individual array against each function type
+ 			var register_object = {};			
+ 			var result_extraction = '';		// Extract the result from the device response for each register and the get processed it
+
+ 			//	numberofregisters = parseInt(numberofregisters,16);  // Converting numberofregisters into Int
+
+ 			device_response = global.response_array[0];
+ 			console.log(' device_response:' + device_response);
+
+ 			while (device_response) {
+
+ 				response_fc = device_response.slice(14, 16);
+ 				console.log('response_fc ' + response_fc);
+
+ 				cdd = cdd + 1;		// incrementing inner loop counter
+ 				console.log('Entered inner loop: ' + cdd);
+
+ 				if (response_fc == 03 || response_fc == 04) {
+
+ 					register_object = {};
+ 					//	var splited_data= response_data.slice((i*4),(i*4)+4);
+ 					transaction_response = device_response.slice(0, 4);
+ 					transaction_response = parseInt(transaction_response, 16); //Converting Response Address to INT
+ 					console.log('transaction_response ' + transaction_response);
+
+ 					if (request_tracking_r[transaction_response].t == 'l' || request_tracking_r[transaction_response].t == 'lu' || request_tracking_r[transaction_response].t == 'sl') {
+ 						console.log('device_response :' + device_response);
+ 						result_extraction = device_response.slice(0, 26);
+ 						console.log('result_extraction :' + result_extraction);
+ 						device_response = device_response.slice(26, device_response.length);
+ 						console.log('device_response after extraction :' + device_response);
+
+ 						//	transaction_response= result_extraction.slice(0,4);
+ 						result_extraction = result_extraction.slice(12, result_extraction.length);
+ 						response_device_id = result_extraction.slice(0, 1);
+ 						//	response_fc 	    = result_extraction.slice(2,3);
+ 						response_len = result_extraction.slice(4, 5);
+ 						response_data = result_extraction.slice(6, result_extraction.length);
+ 						if (request_tracking_r[transaction_response].t == 'sl') // convert data to signed int
+ 						{
+ 							response_data = '0x' + response_data;
+ 							var convert = new Buffer(4);
+ 							convert.writeUInt32BE(response_data, 0);
+
+ 							response_data = convert.readInt32BE(0);
+ 							console.log(response_data);
+ 						} else {
+ 							response_data = parseInt(response_data, 16);
+ 							console.log(response_data);
+ 						}
+
+ 					}
+ 					if (request_tracking_r[transaction_response].t == 'f' || request_tracking_r[transaction_response].t == 'fu') {
+ 						console.log('device_response :' + device_response);
+ 						result_extraction = device_response.slice(0, 26);
+ 						console.log('result_extraction :' + result_extraction);
+ 						device_response = device_response.slice(26, device_response.length);
+ 						console.log('device_response after extraction :' + device_response);
+
+ 						//	transaction_response= result_extraction.slice(0,4);
+ 						result_extraction = result_extraction.slice(12, result_extraction.length);
+ 						response_device_id = result_extraction.slice(0, 1);
+ 						//	response_fc 	    = result_extraction.slice(2,3);
+ 						//	response_fc 	    = result_extraction.slice(2,3);
+ 						response_len = result_extraction.slice(4, 5);
+ 						response_data = result_extraction.slice(6, result_extraction.length);
+ 						console.log('response_data in float: ' + response_data);
+ 						var a = '0x' + response_data;
+ 						console.log('response_data in float: ' + a);
+ 						var b = (a &amp; 0x7fffff | 0x800000) * 1.0 / Math.pow(2, 23) * Math.pow(2, ((a &gt;&gt; 23 &amp; 0xff) - 127));
+ 						response_data = b;
+ 						console.log('response_data in float: ' + response_data);
+ 					}
+ 					if (request_tracking_r[transaction_response].t == 'd' || request_tracking_r[transaction_response].t == 'du') {
+ 						console.log('device_response :' + device_response);
+ 						result_extraction = device_response.slice(0, 34);
+ 						console.log('result_extraction :' + result_extraction);
+ 						device_response = device_response.slice(34, device_response.length);
+ 						console.log('device_response after extraction :' + device_response);
+
+ 						//	transaction_response= result_extraction.slice(0,4);
+ 						result_extraction = result_extraction.slice(12, result_extraction.length);
+ 						response_device_id = result_extraction.slice(0, 1);
+ 						//	response_fc 	    = result_extraction.slice(2,3);
+ 						response_len = result_extraction.slice(4, 5);
+ 						response_data = result_extraction.slice(6, result_extraction.length);
+
+ 						a = '0x' + response_data.slice(0, 8);
+ 						b = '0x' + response_data.slice(8, 16);
+ 						e = (a &gt;&gt; 20 &amp; 0x7ff) - 1023;
+ 						ans = (a &amp; 0xfffff | 0x100000) * 1.0 / Math.pow(2, 20) * Math.pow(2, e) + b * 1.0 / Math.pow(2, 52) * Math.pow(2, e);
+ 						response_data = ans;
+ 					}
+ 					if (request_tracking_r[transaction_response].t == 's' || request_tracking_r[transaction_response].t == 'ss') {
+
+ 						console.log('device_response :' + device_response);
+ 						result_extraction = device_response.slice(0, 22);
+ 						console.log('result_extraction :' + result_extraction);
+ 						device_response = device_response.slice(22, device_response.length);
+ 						console.log('device_response after extraction :' + device_response);
+
+ 						//	transaction_response= result_extraction.slice(0,4);
+ 						result_extraction = result_extraction.slice(12, result_extraction.length);
+ 						response_device_id = result_extraction.slice(0, 1);
+ 						//	response_fc 	    = result_extraction.slice(2,3);
+ 						response_len = result_extraction.slice(4, 5);
+ 						response_data = result_extraction.slice(6, result_extraction.length);
+
+ 						if (request_tracking_r[transaction_response].t == 'ss') // convert data to signed int
+ 						{
+ 							response_data = '0x' + response_data;
+ 							var convert = new Buffer(2);
+ 							convert.writeUInt16BE(response_data, 0);
+
+ 							response_data = convert.readInt16BE(0);
+ 							console.log(response_data);
+ 						} else {
+ 							response_data = parseInt(response_data, 16);
+ 							console.log(response_data);
+ 						}
+ 					}
+
+ 					console.log('request_tracking_r: ' + transaction_response);
+ 					//register_object= {'id':transaction_response,'v':splited_data,'TimeStamp':Date().toLocaleString()};   // json Object for Each Tag Address
+
+ 					register_object.id = parseInt(request_tracking_r[transaction_response].a, 16) + 1;
+ 					register_object.v = response_data;
+ 					register_object.ts = Date.now();
+ 					register_object.t = request_tracking_r[transaction_response].t;
+ 					register_object.c = transaction_response;
+ 					console.log('register_object attributes' + register_object.id + register_object.v + register_object.ts);
+
+ 					if (response_fc == 03) {
+ 						holding_registers.push(register_object);
+ 						console.log('holding_registers' + holding_registers);
+
+ 					}
+ 					if (response_fc == 04) {
+ 						input_registers.push(register_object);
+
+ 					}
+
+ 					console.log('Inside fc0304 register_object:' + register_object);
+ 				}
+
+ 				if (response_fc == 01 || response_fc == 02) {
+ 					register_object = {};
+ 					console.log('device_response :' + device_response);
+ 					result_extraction = device_response.slice(0, 20);
+ 					console.log('result_extraction :' + result_extraction);
+ 					device_response = device_response.slice(20, device_response.length);
+ 					console.log('device_response after extraction :' + device_response);
+
+ 					transaction_response = result_extraction.slice(0, 4);
+ 					result_extraction = result_extraction.slice(12, result_extraction.length);
+ 					response_device_id = result_extraction.slice(0, 1);
+ 					//	response_fc 	    = result_extraction.slice(2,3);
+ 					response_len = result_extraction.slice(4, 5);
+ 					response_data = result_extraction.slice(6, result_extraction.length);
+ 					transaction_response = parseInt(transaction_response, 16); //Converting Response Address to INT
+ 					//register_object= {'id':transaction_response,'v':splited_data,'TimeStamp':Date().toLocaleString()};   // json Object for Each Tag Address
+
+ 					register_object.id = parseInt(request_tracking_r[transaction_response].a, 16) + 1;
+ 					register_object.v = parseInt(response_data, 16);
+ 					register_object.ts = Date.now();
+ 					register_object.c = transaction_response;
+ 					if (response_fc == 01) {
+ 						coil_status.push(register_object);
+ 					}
+ 					if (response_fc == 02) {
+ 						input_staus.push(register_object);
+ 					}
+
+ 				}
+ 				if (response_fc == 06) {
+ 					register_object = {};
+ 					console.log('device_response :' + device_response);
+ 					result_extraction = device_response.slice(0, 24);
+ 					console.log('result_extraction :' + result_extraction);
+ 					device_response = device_response.slice(24, device_response.length);
+ 					console.log('device_response after extraction :' + device_response);
+
+ 					transaction_response = result_extraction.slice(0, 4);
+ 					result_extraction = result_extraction.slice(12, result_extraction.length);
+ 					response_device_id = result_extraction.slice(0, 1);
+ 					//	response_fc 	    = result_extraction.slice(2,3);
+ 					response_len = result_extraction.slice(3, 7);
+ 					response_data = result_extraction.slice(8, result_extraction.length);
+ 					transaction_response = parseInt(transaction_response, 16); //Converting Response Address to INT
+ 					//register_object= {'id':transaction_response,'v':splited_data,'TimeStamp':Date().toLocaleString()};   // json Object for Each Tag Address
+
+ 					register_object.id = parseInt(request_tracking_r[transaction_response].a, 16) + 1;
+ 					register_object.v = parseInt(response_data, 16);
+ 					register_object.ts = Date.now();
+ 					register_object.status = 'success'
+ 						register_object.c = transaction_response;
+
+ 					holding_registers.push(register_object);
+
+ 				}
+ 				if (response_fc == 05) {
+ 					register_object = {};
+ 					console.log('device_response :' + device_response);
+ 					result_extraction = device_response.slice(0, 24);
+ 					console.log('result_extraction :' + result_extraction);
+ 					device_response = device_response.slice(24, device_response.length);
+ 					console.log('device_response after extraction :' + device_response);
+
+ 					transaction_response = result_extraction.slice(0, 4);
+ 					result_extraction = result_extraction.slice(12, result_extraction.length);
+ 					response_device_id = result_extraction.slice(0, 1);
+ 					//	response_fc 	    = result_extraction.slice(2,3);
+ 					response_len = result_extraction.slice(3, 7);
+ 					response_data = result_extraction.slice(8, result_extraction.length);
+ 					transaction_response = parseInt(transaction_response, 16); //Converting Response Address to INT
+ 					//register_object= {'id':transaction_response,'v':splited_data,'TimeStamp':Date().toLocaleString()};   // json Object for Each Tag Address
+
+ 					register_object.id = parseInt(request_tracking_r[transaction_response].a, 16) + 1;
+ 					register_object.v = request_tracking_r[transaction_response].v; ;
+ 					register_object.ts = Date.now();
+ 					register_object.status = 'success'
+ 						register_object.c = transaction_response;
+
+ 					coil_status.push(register_object);
+
+ 				}
+
+ 				if (response_fc == 10) {
+ 					register_object = {};
+ 					console.log('device_response :' + device_response);
+ 					result_extraction = device_response.slice(0, 24);
+ 					console.log('result_extraction :' + result_extraction);
+ 					device_response = device_response.slice(24, device_response.length);
+ 					console.log('device_response after extraction :' + device_response);
+
+ 					transaction_response = result_extraction.slice(0, 4);
+ 					result_extraction = result_extraction.slice(12, result_extraction.length);
+ 					response_device_id = result_extraction.slice(0, 1);
+ 					//	response_fc 	    = result_extraction.slice(2,3);
+ 					response_len = result_extraction.slice(3, 7);
+ 					response_data = result_extraction.slice(8, result_extraction.length);
+ 					transaction_response = parseInt(transaction_response, 16); //Converting Response Address to INT
+ 					//register_object= {'id':transaction_response,'v':splited_data,'TimeStamp':Date().toLocaleString()};   // json Object for Each Tag Address
+
+ 					register_object.id = parseInt(request_tracking_r[transaction_response].a, 16) + 1;
+ 					register_object.v = request_tracking_r[transaction_response].v;
+ 					register_object.ts = Date.now();
+ 					register_object.status = 'success'
+ 						register_object.c = transaction_response;
+
+ 					holding_registers.push(register_object);
+
+ 				}
+ 				if (response_fc == '82') {
+ 					register_object = {};
+ 					console.log('device_response :' + device_response);
+ 					result_extraction = device_response.slice(0, 18);
+ 					console.log('result_extraction :' + result_extraction);
+ 					device_response = device_response.slice(18, device_response.length);
+ 					console.log('device_response after extraction :' + device_response);
+
+ 					transaction_response = result_extraction.slice(0, 4);
+ 					transaction_response = parseInt(transaction_response, 16); //Converting Response Address to INT
+ 					// json Object for Each Tag Address
+ 					//register_object= {'id':transaction_response,'v':splited_data,'TimeStamp':Date().toLocaleString()};
+ 					register_object.id = parseInt(request_tracking_r[transaction_response].a, 16) + 1;
+ 					register_object.v = 'NA';
+ 					register_object.ts = Date.now();
+ 					register_object.c = transaction_response;
+
+ 					input_staus.push(register_object);
+ 				}
+ 				if (response_fc == '81') {
+ 					register_object = {};
+ 					console.log('device_response :' + device_response);
+ 					result_extraction = device_response.slice(0, 18);
+ 					console.log('result_extraction :' + result_extraction);
+ 					device_response = device_response.slice(18, device_response.length);
+ 					console.log('device_response after extraction :' + device_response);
+
+ 					transaction_response = result_extraction.slice(0, 4);
+ 					transaction_response = parseInt(transaction_response, 16); //Converting Response register_address to INT
+
+ 					// json Object for Each Tag Address
+ 					//register_object= {'id':transaction_response,'v':splited_data,'TimeStamp':Date().toLocaleString()};
+ 					register_object.id = parseInt(request_tracking_r[transaction_response].a, 16) + 1;
+ 					register_object.v = 'NA';
+ 					register_object.ts = Date.now();
+ 					register_object.c = transaction_response;
+
+ 					coil_status.push(register_object);
+ 				}
+ 				if (response_fc == '84') {
+ 					register_object = {};
+ 					console.log('device_response :' + device_response);
+ 					result_extraction = device_response.slice(0, 18);
+ 					console.log('result_extraction :' + result_extraction);
+ 					device_response = device_response.slice(18, device_response.length);
+ 					console.log('device_response after extraction :' + device_response);
+
+ 					transaction_response = result_extraction.slice(0, 4);
+ 					transaction_response = parseInt(transaction_response, 16); //Converting Response Address to INT
+
+ 					// json Object for Each Tag Address
+ 					//register_object= {'id':transaction_response,'v':splited_data,'TimeStamp':Date().toLocaleString()};
+
+ 					register_object.id = parseInt(request_tracking_r[transaction_response].a, 16) + 1;
+ 					register_object.v = 'NA';
+ 					register_object.ts = Date.now();
+ 					register_object.c = transaction_response;
+
+ 					input_registers.push(register_object);
+ 				}
+ 				if (response_fc == '83') {
+ 					register_object = {};
+ 					console.log('device_response :' + device_response);
+ 					result_extraction = device_response.slice(0, 18);
+ 					console.log('result_extraction :' + result_extraction);
+ 					device_response = device_response.slice(18, device_response.length);
+ 					console.log('device_response after extraction :' + device_response);
+
+ 					transaction_response = result_extraction.slice(0, 4);
+ 					transaction_response = parseInt(transaction_response, 16); //Converting Response Address to INT
+
+ 					// json Object for Each Tag Address
+ 					//register_object= {'id':transaction_response,'v':splited_data,'TimeStamp':Date().toLocaleString()};
+
+ 					register_object.id = parseInt(request_tracking_r[transaction_response].a, 16) + 1;
+ 					register_object.v = 'NA';
+ 					register_object.ts = Date.now();
+ 					register_object.c = transaction_response;
+
+ 					holding_registers.push(register_object);
+ 				}
+ 				if (response_fc == '85') {
+ 					register_object = {};
+ 					console.log('device_response :' + device_response);
+ 					result_extraction = device_response.slice(0, 18);
+ 					console.log('result_extraction :' + result_extraction);
+ 					device_response = device_response.slice(18, device_response.length);
+ 					console.log('device_response after extraction :' + device_response);
+
+ 					transaction_response = result_extraction.slice(0, 4);
+ 					transaction_response = parseInt(transaction_response, 16); //Converting Response Address to INT
+
+ 					// json Object for Each Tag Address
+ 					//register_object= {'id':transaction_response,'v':splited_data,'TimeStamp':Date().toLocaleString()};
+
+ 					register_object.id = parseInt(request_tracking_r[transaction_response].a, 16) + 1;
+ 					register_object.v = 'NA';
+ 					register_object.ts = Date.now();
+ 					register_object.c = transaction_response;
+
+ 					coil_status.push(register_object);
+ 				}
+ 				if (response_fc == '90') {
+ 					register_object = {};
+ 					console.log('device_response :' + device_response);
+ 					result_extraction = device_response.slice(0, 18);
+ 					console.log('result_extraction :' + result_extraction);
+ 					device_response = device_response.slice(18, device_response.length);
+ 					console.log('device_response after extraction :' + device_response);
+
+ 					transaction_response = result_extraction.slice(0, 4);
+ 					transaction_response = parseInt(transaction_response, 16); //Converting Response Address to INT
+
+ 					// json Object for Each Tag Address
+ 					//register_object= {'id':transaction_response,'v':splited_data,'TimeStamp':Date().toLocaleString()};
+ 					register_object.c = transaction_response;
+ 					register_object.id = parseInt(request_tracking_r[transaction_response].a, 16) + 1;
+ 					register_object.v = 'NA';
+ 					register_object.ts = Date.now();
+
+ 					holding_registers.push(register_object);
+ 				}
+ 				
+ 				//console.log ('global.response_array'  + global.response_array);
+				
+				// Main JSON Object in which response will be sent to MQTT, It Further Have nested JSON array and JSON Objects
+ 				global.read_result = {
+ 					HRL : holding_registers.length,
+ 					IRL : input_registers.length,
+ 					ISL : input_staus.length,
+ 					CSL : coil_status.length,
+ 					ts : Date.now(),
+ 					HoldingR : holding_registers,
+ 					InputR : input_registers,
+ 					InputS : input_staus,
+ 					CoilS : coil_status
+ 				};
+ 				global.read_result = JSON.stringify(global.read_result);
+ 				
+				//console.log('After Stringyfy ' + global.read_result);
+ 				//global.read_result =register_object;
+ 			}
+ 			global.response_array.shift();
+ 		}
+ 		console.log('global.read_result : ' + global.read_result);
+ 		global.client.publish('read_result', global.read_result);			// publish read and write results to EMQTT via MQTT client
+ 		console.log('Results Published:');
+ 		console.log('send_request_track: ' + send_request_track);
+		send_request_track = '';
+ 		console.log('After Publishing Results response_array: ' + global.response_array);
+ 		global.scxml1.gen({
+ 			name : 'output'
+ 		});
+ 		clearInterval(interval2);
+
+ 		//	}
+ 	}, 2);
+   </script>
+     </onentry>
+    </state>
+    <state id='Select_type'><!--   node-size-and-position x=20 y=43 w=75 h=75  -->
+     <transition target='output'></transition>
+    </state>
+   </state>
+  </state>
+  <state id='receive_listen'><!--   node-size-and-position x=340.5 y=790 w=75 h=75  -->
+  <transition event='self_transition' target='receive_listen'> </transition>
+   
+   <onentry>
+    <script>
+
+		client.on('data', function (data) { // Waiting for Response from the Device
+
+			//	device_response = data.toString('hex');
+			//	global.response_array.push(device_response);
+			global.response_array.push(data.toString('hex'));
+			console.log('global.response_array on receive_listner: ' + global.response_array);
+			console.log('Remote Address' + client.remoteAddress);
+			console.log('Call back Received on receive_listner: ' + device_response);
+
+			//completed2 = true;   //????????????? check if still used
+			global.scxml1.gen({
+				name : 'completed2'
+			});
+			//global.scxml1.gen({name:'self_transition'});
+		});
+		</script>
+   </onentry>
+ <send event='self_transition' delay='500'/>
+  </state>
+ </parallel>
+ <state id='disconnected'><!--   node-size-and-position x=1630.24 y=1070 w=80 h=75  -->
+  <onentry>
+   <script>
+		console.log('Disconnected State: ');
+		disconnection();
+		
+		global.client.publish('status', "Disconnected from IP: " + connection_address);
+	</script>
+  </onentry>
+  <transition target='Idle'><!--   edge-path [Idle]  x=1727.24 y=675 x=1684.24 y=205.5  --></transition>
+ </state>
+ <state id='error'><!--   node-size-and-position x=609.74 y=1130 w=75 h=75  -->
+ <transition target='Idle'></transition>
+ </state>
+</scxml>
